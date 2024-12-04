@@ -64,7 +64,7 @@ function M.highlight_nearby()
   local end_line = math.min(total_line - 1, cursor_line + 50) -- 最大行号是 line_count - 1
 
   -- 清除已有高亮，防止重复叠加
-  vim.api.nvim_buf_clear_namespace(bufnr, -1, start_line, end_line + 1)
+  -- vim.api.nvim_buf_clear_namespace(bufnr, -1, start_line, end_line + 1)
 
   -- 遍历光标附近的行进行正则匹配
   for row = start_line, end_line do
