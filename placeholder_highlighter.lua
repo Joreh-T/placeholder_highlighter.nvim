@@ -1,5 +1,3 @@
--- plugins/placeholder_highlighter.lua
-
 local M = {}
 
 -- 设置默认颜色
@@ -94,14 +92,14 @@ function M.highlight_nearby()
   end
 end
 
--- 自动触发函数，支持光标移动和文本变化
 function M.setup_autocmd()
-  vim.cmd([[
-    augroup PlaceholderHighlight
-      autocmd!
-      autocmd TextChanged,TextChangedI,CursorHold * lua require("plugins.placeholder_highlighter").highlight_nearby()
-    augroup END
-  ]])
+  vim.api.nvim_create_autocmd(
+    { "TextChanged", "TextChangedI", "CursorHold" },  -- 事件
+    {
+      pattern = "*",  -- 可以根据需要调整文件类型限制
+      callback = M.highlight_nearby,  -- 直接调用函数
+    }
+  )
 end
 
 -- 初始化模块
