@@ -12,7 +12,7 @@ function M.set_highlight(custom_highlight)
 end
 
 -- 正则表达式匹配支持多种占位符
-local placeholder_pattern = "%%[%a%d]" -- 支持 % 后面跟字母或数字的占位符
+local placeholder_pattern = "%%[-+]?%d*[%.]*[a-zA-Z]" -- 支持 % 后面跟字母,数字,+,-,的占位符
 
 -- 获取当前光标位置的函数
 local function get_cursor_position()
