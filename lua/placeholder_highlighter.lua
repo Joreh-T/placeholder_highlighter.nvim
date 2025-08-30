@@ -1,18 +1,21 @@
 local M = {}
 
 -- 设置默认颜色
-local default_highlight = { fg = "#ff79c6", bold = true }  -- 默认颜色是粉色和加粗
+local default_highlight = { fg = "#e06c75", bold = true }  -- 默认颜色是粉色和加粗
 local highlight_group = "Placeholder"
 
 -- 允许用户配置颜色
 function M.set_highlight(custom_highlight)
-  -- 如果用户没有提供自定义颜色，使用默认颜色
-  local hl = custom_highlight or default_highlight
+  -- 如果用户没有提供自定义颜色，或者提供了一个空表，则使用默认颜色
+  local hl = custom_highlight
+  if hl == nil or vim.tbl_isempty(hl) then
+    hl = default_highlight
+  end
   vim.api.nvim_set_hl(0, highlight_group, hl)
 end
 
 -- 正则表达式匹配支持多种占位符
-local placeholder_pattern = "%%[%-+]?%d*%.?%d*[a-zA-Z]" -- 支持 % 后面跟字母,数字,+,-,的占位符
+local placeholder_pattern = "%%[%-+#0 ]*[0-9*]*%.?[0-9*]*[hlLjzt]?[hl]?[diuoxXfFeEgGaAcspn]" -- 更精确的C-style占位符模式, 支持标志、宽度(*)、精度、长度修饰符(h, l, ll等)
 
 -- 获取当前光标位置的函数
 local function get_cursor_position()
