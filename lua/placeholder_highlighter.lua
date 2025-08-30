@@ -1,21 +1,34 @@
 local M = {}
 
--- 设置默认颜色
-local default_highlight = { fg = "#e06c75", bold = true }  -- 默认颜色是粉色和加粗
+-- 为插件创建一个唯一的命名空间
+local ns = vim.api.nvim_create_namespace("placeholder_highlighter")
 local highlight_group = "Placeholder"
 
+-- 默认配置
+local defaults = {
+  highlight = { fg = "#e06c75", bold = true }, -- 默认高亮
+  filetypes = { "c", "cpp", "python", "lua", "go" }, -- 默认支持的文件类型
+  debounce = 100, -- 防抖延迟, 单位毫秒
+}
+
+-- 用于存储合并后的用户配置
+local config = {}
+
+-- 防抖计时器
+local debounce_timer = nil
+
 -- 允许用户配置颜色
-function M.set_highlight(custom_highlight)
+function M.set_highlight(hl_opts)
+  local hl = hl_opts
   -- 如果用户没有提供自定义颜色，或者提供了一个空表，则使用默认颜色
-  local hl = custom_highlight
   if hl == nil or vim.tbl_isempty(hl) then
-    hl = default_highlight
+    hl = defaults.highlight
   end
   vim.api.nvim_set_hl(0, highlight_group, hl)
 end
 
--- 正则表达式匹配支持多种占位符
-local placeholder_pattern = "%%[%-+#0 ]*[0-9*]*%.?[0-9*]*[hlLjzt]?[hl]?[diuoxXfFeEgGaAcspn]" -- 更精确的C-style占位符模式, 支持标志、宽度(*)、精度、长度修饰符(h, l, ll等)
+-- 更精确的C-style占位符模式, 支持标志、宽度(*)、精度、长度修饰符(h, l, ll等)
+local placeholder_pattern = "%%[%-+#0 ]*[0-9*]*%.?[0-9*]*[hlLjzt]?[hl]?[diuoxXfFeEgGaAcspn]"
 
 -- 获取当前光标位置的函数
 local function get_cursor_position()
@@ -39,14 +52,12 @@ local function is_comment_line(line, filetype)
   end
 end
 
--- 高亮缓冲区中的指定范围内的所有占位符
+-- 使用 extmarks 高亮缓冲区中的占位符
 function M.highlight_nearby()
-  local valid_filetypes = { "c", "cpp", "python", "lua", "go" } -- 定义支持高亮的文件类型
-
+  -- 使用配置中的文件类型列表
   local is_valid_filetype = false
   local filetype = vim.bo.filetype
-
-  for _, ft in ipairs(valid_filetypes) do
+  for _, ft in ipairs(config.filetypes) do
     if filetype == ft then
       is_valid_filetype = true
       break
@@ -66,8 +77,8 @@ function M.highlight_nearby()
   local start_line = math.max(0, cursor_line - 50) -- 最小行号是0
   local end_line = math.min(total_line - 1, cursor_line + 50) -- 最大行号是 line_count - 1
 
-  -- 清除已有高亮，防止重复叠加
-  -- vim.api.nvim_buf_clear_namespace(bufnr, -1, start_line, end_line + 1)
+  -- 清除范围内的旧高亮 (extmarks)
+  vim.api.nvim_buf_clear_namespace(bufnr, ns, start_line, end_line + 1)
 
   -- 遍历光标附近的行进行正则匹配
   for row = start_line, end_line do
@@ -76,18 +87,19 @@ function M.highlight_nearby()
       goto continue
     end
 
-    local start_pos = 0
-
+    local start_pos = 1 -- 从行首开始搜索
     while true do
       local start, stop = string.find(line, placeholder_pattern, start_pos)
       if not start then
         break
       end
 
-      if start and stop then
-        -- 添加高亮（`stop` 是匹配结束位置）
-        vim.api.nvim_buf_add_highlight(bufnr, -1, highlight_group, row, start - 1, stop)
-      end
+      -- 使用 extmark 添加高亮，它会自动跟随文本移动
+      vim.api.nvim_buf_set_extmark(bufnr, ns, row, start - 1, {
+        end_col = stop,
+        hl_group = highlight_group,
+      })
+
       -- 更新起始位置，避免无限循环
       start_pos = stop + 1
     end
@@ -95,21 +107,31 @@ function M.highlight_nearby()
   end
 end
 
+-- 经过防抖处理的高亮函数
+local function debounced_highlight()
+  if debounce_timer then
+    debounce_timer:close()
+  end
+
+  debounce_timer = vim.loop.new_timer()
+  debounce_timer:start(config.debounce, 0, vim.schedule_wrap(function()
+    M.highlight_nearby()
+  end))
+end
+
 function M.setup_autocmd()
-  vim.api.nvim_create_autocmd(
-    { "TextChanged", "TextChangedI", "CursorHold" },  -- 事件
-    {
-      pattern = "*",  -- 可以根据需要调整文件类型限制
-      callback = M.highlight_nearby,  -- 直接调用函数
-    }
-  )
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "CursorHold" }, {
+    pattern = "*",
+    callback = debounced_highlight, -- 使用防抖函数
+  })
 end
 
 -- 初始化模块
-function M.setup(custom_highlight)
-  M.set_highlight(custom_highlight)  -- 设置自定义高亮（如果有）
-  M.setup_autocmd()  -- 设置自动命令
+function M.setup(opts)
+  -- 合并用户配置和默认配置
+  config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+  M.set_highlight(config.highlight)
+  M.setup_autocmd()
 end
 
 return M
-
