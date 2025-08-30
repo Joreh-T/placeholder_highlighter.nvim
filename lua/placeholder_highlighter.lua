@@ -1,60 +1,60 @@
 local M = {}
 
--- 为插件创建一个唯一的命名空间
+-- Create a unique namespace for the plugin
 local ns = vim.api.nvim_create_namespace("placeholder_highlighter")
 local highlight_group = "Placeholder"
 
--- 默认配置
+-- Default configuration
 local defaults = {
-  highlight = { fg = "#e06c75", bold = true }, -- 默认高亮
-  filetypes = { "c", "cpp", "python", "lua", "go" }, -- 默认支持的文件类型
-  debounce = 100, -- 防抖延迟, 单位毫秒
+  highlight = { fg = "#e06c75", bold = true }, -- Default highlight
+  filetypes = { "c", "cpp", "python", "lua", "go" }, -- Default supported file types
+  debounce = 100, -- Debounce delay in milliseconds
 }
 
--- 用于存储合并后的用户配置
+-- Used to store merged user configuration
 local config = {}
 
--- 防抖计时器
+-- Debounce timer
 local debounce_timer = nil
 
--- 允许用户配置颜色
+-- Allow users to configure colors
 function M.set_highlight(hl_opts)
   local hl = hl_opts
-  -- 如果用户没有提供自定义颜色，或者提供了一个空表，则使用默认颜色
+  -- If user doesn't provide custom colors or provides an empty table, use default colors
   if hl == nil or vim.tbl_isempty(hl) then
     hl = defaults.highlight
   end
   vim.api.nvim_set_hl(0, highlight_group, hl)
 end
 
--- 更精确的C-style占位符模式, 支持标志、宽度(*)、精度、长度修饰符(h, l, ll等)
+-- More precise C-style placeholder pattern, supports flags, width(*), precision, length modifiers (h, l, ll, etc.)
 local placeholder_pattern = "%%[%-+#0 ]*[0-9*]*%.?[0-9*]*[hlLjzt]?[hl]?[diuoxXfFeEgGaAcspn]"
 
--- 获取当前光标位置的函数
+-- Function to get current cursor position
 local function get_cursor_position()
-  local row, _ = unpack(vim.api.nvim_win_get_cursor(0)) -- 获取当前窗口的光标行号（0-based）
+  local row, _ = unpack(vim.api.nvim_win_get_cursor(0)) -- Get current window cursor line number (0-based)
   return row
 end
 
 local function is_comment_line(line, filetype)
-  -- 判断注释规则
+  -- Determine comment rules
   if filetype == "python" then
-    return line:match("^%s*#") ~= nil -- Python 注释：行首是 #（前面可以有空格）
+    return line:match("^%s*#") ~= nil -- Python comment: line starts with # (can have spaces before)
   elseif filetype == "lua" then
-    return line:match("^%s*--") ~= nil -- Lua 注释：行首是 --（前面可以有空格）
+    return line:match("^%s*--") ~= nil -- Lua comment: line starts with -- (can have spaces before)
   elseif filetype == "cpp" or filetype == "c" then
-    return line:match("^%s*//") ~= nil -- C/C++ 注释：行首是 //（前面可以有空格）
+    return line:match("^%s*//") ~= nil -- C/C++ comment: line starts with // (can have spaces before)
   elseif filetype == "sh" then
-    return line:match("^%s*#") ~= nil -- Shell 脚本注释：行首是 #（前面可以有空格）
+    return line:match("^%s*#") ~= nil -- Shell script comment: line starts with # (can have spaces before)
   else
-    -- 对于其他文件类型，暂时不处理
+    -- For other file types, don't process for now
     return false
   end
 end
 
--- 使用 extmarks 高亮缓冲区中的占位符
+-- Use extmarks to highlight placeholders in buffer
 function M.highlight_nearby()
-  -- 使用配置中的文件类型列表
+  -- Use file type list from configuration
   local is_valid_filetype = false
   local filetype = vim.bo.filetype
   for _, ft in ipairs(config.filetypes) do
@@ -64,50 +64,50 @@ function M.highlight_nearby()
     end
   end
 
-  -- 如果文件类型不符合条件，直接返回
+  -- If file type doesn't meet criteria, return directly
   if not is_valid_filetype then
     return
   end
 
-  local cursor_line = get_cursor_position() -- 获取光标行号
-  local bufnr = vim.api.nvim_get_current_buf() -- 获取当前缓冲区编号
-  local total_line = vim.api.nvim_buf_line_count(bufnr) -- 获取缓冲区总行数
+  local cursor_line = get_cursor_position() -- Get cursor line number
+  local bufnr = vim.api.nvim_get_current_buf() -- Get current buffer number
+  local total_line = vim.api.nvim_buf_line_count(bufnr) -- Get total buffer line count
 
-  -- 设置高亮范围（最多50行）
-  local start_line = math.max(0, cursor_line - 50) -- 最小行号是0
-  local end_line = math.min(total_line - 1, cursor_line + 50) -- 最大行号是 line_count - 1
+  -- Set highlight range (cursor_line -50 lines, cursor_line +50 lines)
+  local start_line = math.max(0, cursor_line - 50) -- Minimum line number is 0
+  local end_line = math.min(total_line - 1, cursor_line + 50) -- Maximum line number is line_count - 1
 
-  -- 清除范围内的旧高亮 (extmarks)
+  -- Clear old highlights (extmarks) in range
   vim.api.nvim_buf_clear_namespace(bufnr, ns, start_line, end_line + 1)
 
-  -- 遍历光标附近的行进行正则匹配
+  -- Iterate through lines near cursor for regex matching
   for row = start_line, end_line do
     local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
     if is_comment_line(line, filetype) then
       goto continue
     end
 
-    local start_pos = 1 -- 从行首开始搜索
+    local start_pos = 1-- Start search from beginning of line
     while true do
       local start, stop = string.find(line, placeholder_pattern, start_pos)
       if not start then
         break
       end
 
-      -- 使用 extmark 添加高亮，它会自动跟随文本移动
+      -- Use extmark to add highlight, it automatically follows text movement
       vim.api.nvim_buf_set_extmark(bufnr, ns, row, start - 1, {
         end_col = stop,
         hl_group = highlight_group,
       })
 
-      -- 更新起始位置，避免无限循环
+      -- Update start position to avoid infinite loop
       start_pos = stop + 1
     end
     ::continue::
   end
 end
 
--- 经过防抖处理的高亮函数
+-- Debounced highlight function
 local function debounced_highlight()
   if debounce_timer then
     debounce_timer:close()
@@ -122,13 +122,13 @@ end
 function M.setup_autocmd()
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "CursorHold" }, {
     pattern = "*",
-    callback = debounced_highlight, -- 使用防抖函数
+    callback = debounced_highlight,
   })
 end
 
--- 初始化模块
+-- Initialize module
 function M.setup(opts)
-  -- 合并用户配置和默认配置
+  -- Merge user configuration with default configuration
   config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
   M.set_highlight(config.highlight)
   M.setup_autocmd()
